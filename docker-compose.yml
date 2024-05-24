@@ -1,0 +1,119 @@
+# version: '3.8'
+services:
+
+  ditto-docker:
+    container_name: ditto-docker
+    #image: pastagringo/ditto-docker
+    build:
+      context: /home/pastadmin/DEV/PLAY/ditto-docker
+    environment:
+      - ADMIN_HEX_KEY=${ADMIN_HEX_KEY}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - DITTO_DB_BACKEND=${DITTO_DB_BACKEND}
+      - LOCAL_DOMAIN=${LOCAL_DOMAIN}
+      - DITTO_UPLOADER=${DITTO_UPLOADER}
+      - MEDIA_DOMAIN=${MEDIA_DOMAIN}
+      - BLOSSOM_SERVERS=${BLOSSOM_SERVERS}
+    volumes:
+       - ditto_data:/app
+    depends_on:
+      ditto-postgres-db:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      # - "traefik.http.routers.ditto-docker.rule=Host(`${DITTO_DOMAIN}`)"
+      # - "traefik.http.routers.ditto-docker.rule=Host:`${DITTO_DOMAIN}`;Host:`${DITTO_MEDIA_DOMAIN}`"
+      - "traefik.http.routers.ditto-docker.rule=Host(`${DITTO_DOMAIN}`) || Host(`${DITTO_MEDIA_DOMAIN}`)"
+      - "traefik.http.services.ditto-docker.loadbalancer.server.port=8000"
+      - "traefik.http.routers.ditto-docker.entrypoints=websecure"
+      - "traefik.http.routers.ditto-docker.tls.certresolver=selfhostedservices"
+      - "traefik.http.middlewares.accesscontrol.headers.customResponseHeaders.access-control-allow-origin=*"
+      - "traefik.http.routers.ditto-docker.middlewares=accesscontrol@docker"
+
+  ditto-postgres-db:
+    container_name: ditto-postgres-db
+    image: postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - ditto-postgres-db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+### TO DELETE ###
+
+  code-server:
+    image: lscr.io/linuxserver/code-server:latest
+    container_name: code-server
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+      - PASSWORD=Cleat9-Justly0-Untainted3-Suffering9 #optional
+      # - HASHED_PASSWORD= #optional
+      # - SUDO_PASSWORD=password #optional
+      # - SUDO_PASSWORD_HASH= #optional
+      - PROXY_DOMAIN=code.plebes.ovh #optional
+      - DEFAULT_WORKSPACE=/config #optional
+    volumes:
+      - /home/pastadmin:/config
+#    ports:
+#      - 8443:8443
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.code-server.rule=Host(`code.plebes.ovh`)"
+      - "traefik.http.services.code-server.loadbalancer.server.port=8443"
+      - "traefik.http.routers.code-server.entrypoints=websecure"
+      - "traefik.http.routers.code-server.tls.certresolver=selfhostedservices"
+      - "traefik.http.middlewares.accesscontrol.headers.customResponseHeaders.access-control-allow-origin=*"
+      - "traefik.http.routers.code-server.middlewares=accesscontrol@docker"
+
+### TO DELETE ###
+
+  traefik:
+    image: "traefik:latest"
+    container_name: "traefik"
+    restart: unless-stopped
+    command:
+      - "--accesslog=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.selfhostedservices.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--certificatesresolvers.selfhostedservices.acme.email=${EMAIL}"
+      - "--certificatesresolvers.selfhostedservices.acme.storage=/letsencrypt/acme.json"
+      - "--api.insecure=true"
+      - "--api.dashboard=true"
+      - "--providers.docker"
+      - "--log.level=INFO"
+    ports:
+      - target: 80
+        published: 80
+        mode: host
+      - target: 443
+        published: 443
+        mode: host
+      - target: 8080
+        published: 8080
+        mode: host
+    volumes:
+      - "./letsencrypt:/letsencrypt"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+volumes:
+  ditto_data:
+  ditto-postgres-db_data:
